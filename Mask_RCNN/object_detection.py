@@ -28,7 +28,7 @@ class OBG_det():
     def __init__(self, batch_size):
         # Root directory of the project
           #ROOT_DIR = os.getcwd()
-          ROOT_DIR = '/home/thilini/sem-img/new_work/new_data_filtering/Mask_RCNN'
+          ROOT_DIR = '/home/anh/new_data_filtering/Mask_RCNN'
         
           # Directory to save logs and trained model
           MODEL_DIR = os.path.join(ROOT_DIR, "logs")
