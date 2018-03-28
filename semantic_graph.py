@@ -1,15 +1,21 @@
 # region bounding box overlap
 #from stanfordcorenlp import StanfordCoreNLP
+#import sys
+#import os.path
+
 import json
 from collections import namedtuple
 from nltk.corpus import propbank
 from collections import OrderedDict
+
 #from autocorrect import spell
 
 noun_tags = ['NN','NNS']
 verb_tags = ['VB','VBD', 'VBG','VBN','VBZ', 'VBP']
 attributive_verbs = ['has', 'have']
 preposition_tag = ['IN','RP']
+
+
 
 
 #nlp = StanfordCoreNLP(r'/Users/thilinicooray/sem_img/stanford-corenlp-full-2017-06-09/') 
@@ -90,7 +96,8 @@ def get_final_semantic_map (semantic_map):
         
     return final_relation_list
     
-def get_srl_dict(sense,srl_dict,objects):
+def get_srl_dict(sense,srl_dict,objects, coref_chain_list):
+    
 #    non_action_verbs = ['is', 'are']
 #    #above verbs used for attributes
 #    if srl_dict['predicate'] in non_action_verbs:
@@ -184,13 +191,13 @@ def get_srl_dict(sense,srl_dict,objects):
             verb_removed_tag_tuples = []
             verb_removed_comp = ''
             verb_found = False
-            preposition = ''
+            #preposition = ''
             for (word,tag) in tag_tuples:
                 if tag in verb_tags:
                     verb_found = True
                 #pos tagger tag down as adverb, but is it needed for direction
-                if tag in preposition_tag or word in ['down', 'up']:
-                    preposition = word
+                '''if tag in preposition_tag or word in ['down', 'up']:
+                    preposition = word'''
                 if not verb_found:
                     verb_removed_comp = verb_removed_comp + word + ' '
                     verb_removed_tag_tuples.append((word,tag))
@@ -211,13 +218,36 @@ def get_srl_dict(sense,srl_dict,objects):
                     if value in object_names:
                         mapped_srl_dict[key] = value
                     else:
-                        matching_elements = [obj for obj in object_names if (value in obj or obj in value)]
+                        #no exact match found - use coref details from flickr30k
+                        similar_entities = []
+                        for chain in coref_chain_list:
+                            if value in chain and len(chain) > 1:
+                                for ent in chain:
+                                    if ent is not value:
+                                        similar_entities.append(ent)
+                        
+                        if len(similar_entities) > 0:
+                            ob_set = set(object_names)
+                            coref_set = set(similar_entities)
+                            matching_ent = ob_set.intersection(coref_set)
+                            mapped_srl_dict[key] = ",".join(matching_ent)
+                            
+                            #when element changes from the original token in the caption, it needs to be updated in PoS tag entry also
+                            region_tag_tuples_updated = []
+                            for tuple1 in region_tag_tuples:
+                                if tuple1[0] == value:
+                                    region_tag_tuples_updated.append((",".join(matching_ent),tuple1[1]))
+                                else:
+                                    region_tag_tuples_updated.append((tuple1[0],tuple1[1]))
+                            region_tag_tuples = region_tag_tuples_updated
+                            
+                        '''matching_elements = [obj for obj in object_names if (value in obj or obj in value)]
                         print('matching elements in the image', matching_elements)
                         if len(matching_elements)> 0 :
                             mapped_srl_dict[key] = matching_elements[0]
                         else :
                             # todo :word similarity needs to be checked if exact match cannot be found
-                            return  None, None
+                            return  None, None'''
                             
                 else:
                     mapped_srl_dict[key] = verb_removed_comp.strip()           
@@ -225,8 +255,8 @@ def get_srl_dict(sense,srl_dict,objects):
             else:
                 mapped_srl_dict[key] = verb_removed_comp.strip()
                 
-            if preposition:
-                mapped_srl_dict[key] = preposition + ',' + mapped_srl_dict[key] 
+            #if preposition: #removed preposition part for now
+                #mapped_srl_dict[key] = preposition + ',' + mapped_srl_dict[key] 
 
     if len(mapped_srl_dict.keys()) == 1:
         return  None, None
@@ -253,7 +283,7 @@ def get_tag_tuples(comp_value, region_tag_tuples):
     print('current tuples', tuple_list, 'region tuples', region_tag_tuples)
     return tuple_list, region_tag_tuples
     
-def srl(srl_map,objects):
+def srl(srl_map,objects, coref_chain_list):
     srl_mapping_list = []              
 #    #execute deep-srl to get semantic role list
 #    input_file = 'input.txt'
@@ -279,7 +309,11 @@ def srl(srl_map,objects):
 #         
 #    os.remove(output_file)
     for element in srl_map:
-        srl, tag_tuples = get_srl_dict(element, srl_map[element], objects)
+        #remove has, have from verb list
+        #print('element', element)
+        if 'has' in element or 'have' in element:
+            continue
+        srl, tag_tuples = get_srl_dict(element, srl_map[element], objects, coref_chain_list)
         if srl is not None:
             print('srl', srl, 'tags', tag_tuples)
             srl_mapping_list.append({"srl" : srl, "tags" : tag_tuples})
@@ -287,7 +321,7 @@ def srl(srl_map,objects):
     return srl_mapping_list 
     
 
-def get_semantic_map_for_image(regions, objects) :
+def get_semantic_map_for_image(regions, objects, coref_chain_list) :
     semantic_map = {}
 
     #there are many regions in an image
@@ -320,7 +354,7 @@ def get_semantic_map_for_image(regions, objects) :
         #srl doesn't work
         if parsed_phrase['hasVerb'] :
             print('Found verbs')
-            srl_dict_list = srl(parsed_phrase['verbs'], objects)
+            srl_dict_list = srl(parsed_phrase['verbs'], objects, coref_chain_list)
             
             if srl_dict_list and len(srl_dict_list) > 0 :
                 for element in srl_dict_list:
@@ -343,12 +377,12 @@ def get_semantic_map_for_image(regions, objects) :
                                 print('matching srl labels :', matching_srl_label)
                                 if not len(matching_srl_label) > 0:
                                     continue
-                                preposition = ''
-                                #for prepositional phrases
-                                if ',' in matching_srl_label[0]:
+                                #preposition = ''
+                                #for prepositional phrases - don't use for annotation for now
+                                '''if ',' in matching_srl_label[0]:
                                     split = matching_srl_label[0].split(',')
                                     preposition = split[0]
-                                    matching_srl_label[0] = split[1]
+                                    matching_srl_label[0] = split[1]'''
                                 
                                 if matching_srl_label[0] not in current_matching_elements:
                                     current_matching_elements.append(matching_srl_label[0])
@@ -357,33 +391,35 @@ def get_semantic_map_for_image(regions, objects) :
                                 
                                 for obj in objects:
                                     print('obj :', obj['names'][0], 'current element ',matching_srl_label[0])
-                                    if obj['names'][0] == matching_srl_label[0]:
-                                        print ('object: ', matching_srl_label[0], obj)
-                                        obj_box = Rectangle(obj['x'], obj['y'], obj['x'] + obj['w'], obj['y'] + obj['h'])
-                                        # y should we calculate area like this?
-                                        #obj_box_area = (obj_box.xmax - obj_box.xmin + 1) * (obj_box.ymax - obj_box.ymin + 1)
-                                        object_overlap_ratio = get_verlap_ratio(region_box, obj_box, obj)
-                                        print ('overlap ratio :', object_overlap_ratio)
+                                    matched_list = matching_srl_label[0].split(',')
+                                    for element in matched_list:
+                                        if obj['names'][0] == element:
+                                            print ('object: ', matching_srl_label[0], obj)
+                                            obj_box = Rectangle(obj['x'], obj['y'], obj['x'] + obj['w'], obj['y'] + obj['h'])
+                                            # y should we calculate area like this?
+                                            #obj_box_area = (obj_box.xmax - obj_box.xmin + 1) * (obj_box.ymax - obj_box.ymin + 1)
+                                            object_overlap_ratio = get_verlap_ratio(region_box, obj_box, obj)
+                                            print ('overlap ratio :', object_overlap_ratio)
+                                            
+                                            if object_overlap_ratio == 0.0: #otherwise this may lead to unrelated regions (some other's face mistaken as inside current region)
+                                                continue
                                         
-                                        if object_overlap_ratio == 0.0: #otherwise this may lead to unrelated regions (some other's face mistaken as inside current region)
-                                            continue
-                                    
-                                        #even with inimum overlap, consider the relations if we couldn't find a good one.
-                                        # this is required because of incorrect region bounding boxes of human annotation
-                                        if preposition:
-                                            role = srl_dict.keys()[srl_dict.values().index(preposition + ',' + obj['names'][0])]
-                                        else:
-                                            role = srl_dict.keys()[srl_dict.values().index(obj['names'][0])]
-
-                                        if preposition :
-                                            if not role in role_list:
-                                                elements_inside_region += 1
-                                                role_list[role] = (object_overlap_ratio,preposition + ' ' + str(obj['object_id']))
-                                            else:
-                                                current_overlap = role_list[role][0]
-                                                if current_overlap < object_overlap_ratio:
+                                            #even with inimum overlap, consider the relations if we couldn't find a good one.
+                                            # this is required because of incorrect region bounding boxes of human annotation
+                                            '''if preposition:
+                                                role = srl_dict.keys()[srl_dict.values().index(preposition + ',' + obj['names'][0])]
+                                            else:'''
+                                            role = srl_dict.keys()[srl_dict.values().index(matching_srl_label[0])]
+    
+                                            '''if preposition :
+                                                if not role in role_list:
+                                                    elements_inside_region += 1
                                                     role_list[role] = (object_overlap_ratio,preposition + ' ' + str(obj['object_id']))
-                                        else:
+                                                else:
+                                                    current_overlap = role_list[role][0]
+                                                    if current_overlap < object_overlap_ratio:
+                                                        role_list[role] = (object_overlap_ratio,preposition + ' ' + str(obj['object_id']))
+                                            else:'''
                                             if not role in role_list:
                                                 elements_inside_region += 1
                                                 role_list[role] = (object_overlap_ratio,obj['object_id'])
@@ -424,26 +460,42 @@ def get_semantic_map_for_image(regions, objects) :
     print('final map', final_map)
     return final_map
 
-
 # Main method of the program
+# to run on py3 bcz of object detection code
 def main():
     image_count = 0
-    with open('/home/thilini/sem_img/dataset/new_work/objects.json') as data_file1:    
+    no_liv_count = 0
+    
+    with open('coref_chains.json', 'r') as f:
+        coref_chains = json.load(f,object_pairs_hook=OrderedDict)
+        
+    with open('img_ob_detect.json', 'r') as f1:
+        has_living_beings = json.load(f1)
+        
+    coref_chain_list = list(coref_chains.values())
+    
+    with open('objects.json') as data_file1:    
         content_objects = json.load(data_file1,object_pairs_hook=OrderedDict)
         
-    content_image_regions = json.load(open('/home/thilini/sem_img/dataset/new_work/region_descriptions_updated_final.json'), object_pairs_hook=OrderedDict) 
+    content_image_regions = json.load(open('region_descriptions_updated_final.json'), object_pairs_hook=OrderedDict) 
     
 #    with open('/Users/thilinicooray/sem_img/sample/region_desc1edited.json') as data_file:    
 #        content_image_regions = json.load(data_file)
 
-    with open ('semantic_relationsips_final.json', 'w') as relation_file:
+    with open ('semantic_relationsips_filtered2432018.json', 'w') as relation_file:
+        print('full image count = ', len(content_image_regions))
         for image in content_image_regions:
             image_id = image['id']
             print('started processing image ', image_id)
+            
+            if not has_living_beings[str(image_id)]:
+                print('no living being in the image')
+                no_liv_count += 1
+                continue
             regions = image['regions']
             objects = filter(lambda x: x['image_id'] == image_id, content_objects)[0]['objects']
 
-            final_semantic_map = get_semantic_map_for_image(regions, objects)
+            final_semantic_map = get_semantic_map_for_image(regions, objects, coref_chain_list)
 
             if len(final_semantic_map) > 0:
                 image_count += 1
@@ -454,6 +506,9 @@ def main():
             
                 print('Successfully wrote  visual semantic map for image ', image_id, ' to output file')
                 print('current dataset size = ' + str(image_count))
+                print('current no live size = ' + str(no_liv_count))
+                
+    print('living img count :', no_liv_count)
 
 if __name__ == '__main__':
     main()
