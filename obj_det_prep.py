@@ -54,7 +54,13 @@ while img_count < len(image_path_list):
     else:
         end = img_count + batch_size
     print('END :', end)
-    result_list = obj_det.detect_objects(image_path_list[img_count:end])
+    try:
+        result_list = obj_det.detect_objects(image_path_list[img_count:end])
+    except:
+        print ('Error at', image_id_list)
+        img_count = end
+        continue
+
     print('results :', result_list)
     for i in range(img_count, end):
         print('counter = ', i)
