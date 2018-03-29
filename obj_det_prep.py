@@ -57,7 +57,7 @@ while img_count < len(image_path_list):
     try:
         result_list = obj_det.detect_objects(image_path_list[img_count:end])
     except:
-        print ('Error')
+        print ('Error at', image_id_list[img_count:end])
         img_count = end
         continue
 
