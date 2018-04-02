@@ -144,6 +144,7 @@ class OBG_det():
           results = self.model.detect(images, verbose=1)
           
           final_results = []
+          bbox_list = []
           
           for i in range(len(results)):
               detected_classes = results[i]['class_ids']
@@ -153,10 +154,13 @@ class OBG_det():
               living_being_count = 0
               
               image_area = float(images[i].shape[0] * images[i].shape[1])
-              
+              cur_bbox_dict = {}
+
               for j in range(len(detected_classes)):
                   if detected_classes[j] in living_being_ids:
                       y1, x1, y2, x2 = results[i]['rois'][j]
+                      cur_bbox_dict[j] = (x1, y1, x2, y2)
+
                       object_bbox_area = float(x2-x1)*(y2-y1)
                       
                       coverage = float(object_bbox_area*100)/image_area
@@ -165,7 +169,8 @@ class OBG_det():
                       if coverage >= 15.00:
                           living_being_count += 1
                   #roi_list.append()
-              final_results.append(True if living_being_count > 2 else False)    
+              final_results.append(True if living_being_count > 2 else False)
+              bbox_list.append(cur_bbox_dict if living_being_count > 2 else False)
         
           # Visualize results
           #r = results[0]
@@ -176,4 +181,3 @@ class OBG_det():
           # In[ ]:
           #sess.close()
           return final_results
-    
