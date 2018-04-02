@@ -45,6 +45,7 @@ print('Total image size = ', len(image_id_list))
 img_count = 0
 
 results_dict = {}
+bbox_dict = {}
 while img_count < len(image_path_list):
     print('CURRENT IMG COUNT :',img_count, len(image_path_list))
     if len(image_path_list) - img_count < batch_size:
@@ -55,7 +56,7 @@ while img_count < len(image_path_list):
         end = img_count + batch_size
     print('END :', end)
     try:
-        result_list = obj_det.detect_objects(image_path_list[img_count:end])
+        result_list, bbox_list = obj_det.detect_objects(image_path_list[img_count:end])
     except:
         print ('Error at', image_id_list[img_count:end])
         img_count = end
@@ -65,11 +66,12 @@ while img_count < len(image_path_list):
     for i in range(img_count, end):
         print('counter = ', i)
         results_dict[image_id_list[i]] = result_list[i%batch_size]
+        bbox_dict[image_id_list[i]] = bbox_list[i % batch_size]
     img_count = end
 
 print('OBJ detection for all images completed.')
 
 result_file_path = sys.argv[2]
 with open (result_file_path, 'w') as outputfile:
-    json.dump(results_dict, outputfile)
-
+    json.dump(bbox_dict, outputfile)
+# with open()
